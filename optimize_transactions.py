@@ -28,7 +28,7 @@ names = list(net_transactions.keys())
 # ----- INDEX -----
 name_combos = [(n1, n2) for n1 in names for n2 in names if n1 != n2]
 # Unique name combos, i.e. contains only one of [(Person1, Person2), (Person2, Person1)]
-name_combos_u = [(n1, n2) for i, n1 in enumerate(names) for n2 in names[i+1:]]
+name_combos_unique = [(n1, n2) for i, n1 in enumerate(names) for n2 in names[i + 1:]]
 
 # ----- PARAMETERS -----
 max_payout = max(net_transactions.values())
@@ -37,28 +37,27 @@ max_payment = abs(min(net_transactions.values()))
 # ----- VARIABLES -----
 payout = LpVariable.dicts("Payout", name_combos, 0, None)
 payment = LpVariable.dicts("Payment", name_combos, None, 0)
-is_trans = LpVariable.dicts("Is_Transaction", name_combos_u, 0, 1, LpInteger)
+is_trans = LpVariable.dicts("Is_Transaction", name_combos_unique, 0, 1, LpInteger)
 
 # ----- PROBLEM -----
 prob = LpProblem("Transaction optimization", LpMinimize)
 
 # ----- OBJECTIVE -----
-prob += lpSum([is_trans[nc] for nc in name_combos_u]), "Num_Transactions"
+prob += lpSum([is_trans[nc] for nc in name_combos_unique]), "Num_Transactions"
 
 # ----- CONSTRAINTS -----
 for n1, n2 in name_combos:
     # The amount Person1 receives from Person2 must equal the amount Person2 transferred to Person1
     prob += payout[(n1, n2)] + payment[(n2, n1)] == 0, f"Net_is_zero_{(n1, n2)}"
 
-for i, n1 in enumerate(names):
-    for n2 in names[i+1:]:
-        # If the payout is positive, is_trans must be 1
-        prob += payout[(n1, n2)] - max_payout * is_trans[(n1, n2)] <= 0, f"Is_payout_{(n1, n2)}"
-        prob += payout[(n2, n1)] - max_payout * is_trans[(n1, n2)] <= 0, f"Is_payout_{(n2, n1)}"
+for n1, n2 in name_combos_unique:
+    # If the payout is positive, is_trans must be 1
+    prob += payout[(n1, n2)] - max_payout * is_trans[(n1, n2)] <= 0, f"Is_payout_{(n1, n2)}"
+    prob += payout[(n2, n1)] - max_payout * is_trans[(n1, n2)] <= 0, f"Is_payout_{(n2, n1)}"
 
-        # If the payout is positive, is_trans must be 1
-        prob += payment[(n1, n2)] + max_payment * is_trans[(n1, n2)] >= 0, f"Is_payment_{(n1, n2)}"
-        prob += payment[(n2, n1)] + max_payment * is_trans[(n1, n2)] >= 0, f"Is_payment_{(n2, n1)}"
+    # If the payout is positive, is_trans must be 1
+    prob += payment[(n1, n2)] + max_payment * is_trans[(n1, n2)] >= 0, f"Is_payment_{(n1, n2)}"
+    prob += payment[(n2, n1)] + max_payment * is_trans[(n1, n2)] >= 0, f"Is_payment_{(n2, n1)}"
 
 for n1 in names:
     if net_transactions[n1] >= 0:
