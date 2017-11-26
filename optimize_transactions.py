@@ -9,7 +9,11 @@ The data should be a .csv on the following format:
     Person2: -500
     Person3: -500
 
-The sum of Net_Transactions must be 0
+Net_Transactions must  be positive if the person should receive money, and negative if the person should pay money.
+The sum of Net_Transactions must be 0. One solution to the problem above could be:
+
+    Person 2 transfers 500 to Person 1
+    Person 3 transfers 500 to Person 1
 
 Author: Peter Sandberg
 """
