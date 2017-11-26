@@ -26,39 +26,39 @@ net_transactions = {name: float(trans) for name, trans in data}
 names = list(net_transactions.keys())
 
 # ----- INDEX -----
-names_combos = [(n1, n2) for n1 in names for n2 in names if n1 != n2]
+name_combos = [(n1, n2) for n1 in names for n2 in names if n1 != n2]
+# Unique name combos, i.e. contains only one of [(Person1, Person2), (Person2, Person1)]
+name_combos_u = [(n1, n2) for i, n1 in enumerate(names) for n2 in names[i+1:]]
 
 # ----- PARAMETERS -----
 max_payout = max(net_transactions.values())
 max_payment = abs(min(net_transactions.values()))
 
 # ----- VARIABLES -----
-payout = LpVariable.dicts("Payout", names_combos, 0, None)
-payment = LpVariable.dicts("Payment", names_combos, None, 0)
-is_trans = LpVariable.dicts("Is_Transaction", names_combos, 0, 1, LpInteger)
+payout = LpVariable.dicts("Payout", name_combos, 0, None)
+payment = LpVariable.dicts("Payment", name_combos, None, 0)
+is_trans = LpVariable.dicts("Is_Transaction", name_combos_u, 0, 1, LpInteger)
 
 # ----- PROBLEM -----
 prob = LpProblem("Transaction optimization", LpMinimize)
 
 # ----- OBJECTIVE -----
-prob += lpSum([is_trans[nc] for nc in names_combos]), "Num_Transactions"
+prob += lpSum([is_trans[nc] for nc in name_combos_u]), "Num_Transactions"
 
 # ----- CONSTRAINTS -----
-for nc in names_combos:
-    # Net transaction for two people must be zero
-    n1, n2 = nc
-    prob += payout[(n1, n2)] + payment[(n2, n1)] == 0, f"Net_is_zero_{nc}"
-
-    # If the payout is positive, is_trans must be 1
-    prob += payout[nc] - max_payout * is_trans[nc] <= 0, f"Is_payout_{nc}"
-
-    # If the payout is positive, is_trans must be 1
-    prob += payment[nc] + max_payment * is_trans[nc] >= 0, f"Is_payment_{nc}"
-
+for n1, n2 in name_combos:
+    # The amount Person1 receives from Person2 must equal the amount Person2 transferred to Person1
+    prob += payout[(n1, n2)] + payment[(n2, n1)] == 0, f"Net_is_zero_{(n1, n2)}"
 
 for i, n1 in enumerate(names):
     for n2 in names[i+1:]:
-        prob += is_trans[(n1, n2)] - is_trans[(n2, n1)] == 0, f"Is_trans_symmetry_('{n1}','{n2}')"
+        # If the payout is positive, is_trans must be 1
+        prob += payout[(n1, n2)] - max_payout * is_trans[(n1, n2)] <= 0, f"Is_payout_{(n1, n2)}"
+        prob += payout[(n2, n1)] - max_payout * is_trans[(n1, n2)] <= 0, f"Is_payout_{(n2, n1)}"
+
+        # If the payout is positive, is_trans must be 1
+        prob += payment[(n1, n2)] + max_payment * is_trans[(n1, n2)] >= 0, f"Is_payment_{(n1, n2)}"
+        prob += payment[(n2, n1)] + max_payment * is_trans[(n1, n2)] >= 0, f"Is_payment_{(n2, n1)}"
 
 for n1 in names:
     if net_transactions[n1] >= 0:
@@ -78,7 +78,7 @@ prob.solve()
 print(f"Status: {prob.status}")
 
 # Each of the variables is printed with it's resolved optimum value
-print(f"Number of transactions: {value(prob.objective) // 2}")
+print(f"Number of transactions: {value(prob.objective)}")
 
 # Print payments
 print("Payments")
