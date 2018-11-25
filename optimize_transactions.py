@@ -21,6 +21,11 @@ Author: Peter Sandberg
 import csv
 from pulp import *
 
+
+CURRENCY = "kr"
+SLACK = "_slack"
+
+
 with open("data.csv") as f:
     csv_reader = csv.reader(f)
     next(csv_reader)  # Header
@@ -31,45 +36,20 @@ names = list(net_transactions.keys())
 
 # ----- INDEX -----
 name_combos = [(n1, n2) for n1 in names for n2 in names if n1 != n2]
-# Unique name combos, i.e. contains only one of [(Person1, Person2), (Person2, Person1)]
-name_combos_unique = [(n1, n2) for i, n1 in enumerate(names) for n2 in names[i + 1:]]
-
-# ----- PARAMETERS -----
-max_payout = max(net_transactions.values())
-max_payment = abs(min(net_transactions.values()))
 
 # ----- VARIABLES -----
-payout = LpVariable.dicts("Payout", name_combos, 0, None)
-payment = LpVariable.dicts("Payment", name_combos, None, 0)
-is_trans = LpVariable.dicts("Is_Transaction", name_combos_unique, 0, 1, LpInteger)
+transfer = LpVariable.dicts("Transfer", name_combos, 0, None)
+slack = LpVariable.dicts("Slack", names, -1.0, 1.0)
 
 # ----- PROBLEM -----
 prob = LpProblem("Transaction optimization", LpMinimize)
 
 # ----- OBJECTIVE -----
-prob += lpSum([is_trans[nc] for nc in name_combos_unique]), "Num_Transactions"
+prob += lpSum([transfer[nc] for nc in name_combos]), "Transaction_sum"
 
-# ----- CONSTRAINTS -----
-for n1, n2 in name_combos:
-    # The amount Person1 receives from Person2 must equal the amount Person2 transferred to Person1
-    prob += payout[(n1, n2)] + payment[(n2, n1)] == 0, f"Net_is_zero_{(n1, n2)}"
-
-for n1, n2 in name_combos_unique:
-    # If the payout is positive, is_trans must be 1
-    prob += payout[(n1, n2)] - max_payout * is_trans[(n1, n2)] <= 0, f"Is_payout_{(n1, n2)}"
-    prob += payout[(n2, n1)] - max_payout * is_trans[(n1, n2)] <= 0, f"Is_payout_{(n2, n1)}"
-
-    # If the payout is positive, is_trans must be 1
-    prob += payment[(n1, n2)] + max_payment * is_trans[(n1, n2)] >= 0, f"Is_payment_{(n1, n2)}"
-    prob += payment[(n2, n1)] + max_payment * is_trans[(n1, n2)] >= 0, f"Is_payment_{(n2, n1)}"
 
 for n1 in names:
-    if net_transactions[n1] >= 0:
-        prob += lpSum([payout[(n1, n2)] for n2 in names if n1 != n2]) == net_transactions[n1], f"Payout_{n1}"
-        prob += lpSum([payment[(n1, n2)] for n2 in names if n1 != n2]) == 0, f"Payment_{n1}"
-    else:
-        prob += lpSum([payout[(n1, n2)] for n2 in names if n1 != n2]) == 0, f"Payout_{n1}"
-        prob += lpSum([payment[(n1, n2)] for n2 in names if n1 != n2]) == net_transactions[n1], f"Payment_{n1}"
+    prob += lpSum([transfer[(n2, n1)] for n2 in names if n1 != n2]) - lpSum([transfer[(n1, n2)] for n2 in names if n1 != n2]) + slack[n1] == net_transactions[n1], f"Net_{n1}"
 
 # Write problem to file
 prob.writeLP("TransactionOptimization.lp")
@@ -80,13 +60,23 @@ prob.solve()
 # The status of the solution is printed to the screen
 print(f"Status: {prob.status}")
 
-# Each of the variables is printed with it's resolved optimum value
-print(f"Number of transactions: {value(prob.objective)}")
 
-# Print payments
-print("Payments")
-for v in prob.variables():
-    if "Payment" in v.name and v.varValue != 0:
-        print(f"{v.name} = {v.varValue}")
+actual_net_transactions = {}
 
+max_name_len = max(len(n) for n in names)
 
+print("Transfers:")
+for n1 in names:
+    actual_net_transactions[n1] = 0
+    for n2 in names:
+        if n1 == n2:
+            continue
+        t_out = transfer[(n1, n2)].varValue
+        if t_out != 0:
+            print(f"{n1:<{max_name_len+1}} -> {n2:<{max_name_len+1}} {t_out} {CURRENCY}")
+        actual_net_transactions[n1] += transfer[(n2, n1)].varValue - t_out
+
+print("-" * 20)
+print("Net transactions:")
+for n in names:
+    print(f"{n:<{max_name_len+1}} {actual_net_transactions[n]} {CURRENCY} (Expected: {net_transactions[n]} {CURRENCY})")
